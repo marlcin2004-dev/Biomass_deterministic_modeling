@@ -2,8 +2,7 @@ from Klausmeier import KlausmeierModel
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
+
 
 class BifurcationExperiment:
 
