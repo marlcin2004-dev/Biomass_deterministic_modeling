@@ -1,97 +1,100 @@
-import numpy as np
+from Klausmeier import KlausmeierModel
+from tqdm import tqdm
 import matplotlib.pyplot as plt
+import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
-import tqdm as tqdm
 
+class BifurcationExperiment:
 
+    def __init__(self, a_values, model_params):
+        """
+        Class used to show bifurcation, how parameter "a" affects the end result of a Kluasmeier-Gray-Scott model
+        :array a_values:
+        :dict KGS_model_params:
+        """
+        self.a_values = a_values
+        self.model_params = model_params
 
-def D2(N):
-    e = np.ones(N)
-    return sp.diags([e, -2*e, e], [-1, 0, 1], shape=(N, N), format="csr")
+    def run(self):
+        """
+        Symulacja bifurkacji: najpierw gałąź malejąca,
+        potem rosnąca startująca z niezerowego rozwiązania.
+        """
 
-def KGS_a_change(a_l, d1, d2, m, Lx, Ly, Nx, Ny, ht = 0.005, max_iter = 1000, tol = 1e-6, start_biomas = 1, start_water = 1):
-    """
-    Funkcja pozwala obliczyć średni i maksymalny poziom biomasy dla danych parametów a w a_l
-    :param a_l: Lista parametrów a (współczynnik opadów)
-    :param d1:  Dyfuzja wody
-    :param d2:  Dyfuzja biomasy
-    :param m:   Współczynnik śmiertelności
-    :param Lx:  Wielkość dziedziny na x
-    :param Ly:  Wielkość dziedziny na y
-    :param Nx:  Podział dziedziny x
-    :param Ny:  Podział dziedziny y
-    :param ht:  Krok czasowy
-    :param max_iter:  Maksymalna liczba iteracji
-    :param tol:     Tolerancja
-    :param start_biomas: Warunek początkowwy biomasy
-    :param start_water: Warunek początkowy wody
-    :return: avg_biomass, max_biomass
-    """
-    avg_biomass = []
-    max_biomass = []
+        # ===== GAŁĄŹ MALEJĄCA =====
+        avg_down = []
+        max_down = []
 
-    x = np.linspace(0, Lx, Nx)
-    y = np.linspace(0, Ly, Ny)
-    hx = x[1] - x[0]
-    hy = y[1] - y[0]
+        previous_u = None
+        previous_v = None
 
-    X, Y = np.meshgrid(x, y)
-    Xf = X.ravel()
-    Yf = Y.ravel()
+        nonzero_u = None
+        nonzero_v = None
 
-    N = Nx * Ny
+        print("Simulation for a descending...")
 
-    ind_left = np.where(Xf == x[0])[0]
-    ind_right = np.where(Xf == x[-1])[0]
-    ind_bot = np.where(Yf == y[0])[0]
-    ind_top = np.where(Yf == y[-1])[0]
-    indices_boundary = np.concatenate([ind_left, ind_right, ind_bot, ind_top])
+        for a in tqdm(self.a_values):
 
-    indices_interior = np.setdiff1d(np.arange(N), indices_boundary)
+            model = KlausmeierModel(a=a, **self.model_params)
 
-    # start
-    u = np.ones(N) * start_water
-    v = np.ones(N) * start_biomas
+            # dodajemy stan z poprzedniego kroku
+            if previous_u is not None:
+                model.u = previous_u.copy()
+                model.v = previous_v.copy()
 
-    # Dirichlet
-    u[indices_boundary] = 0.0
-    v[indices_boundary] = 0.0
+            model.run()
 
-    Ix = sp.eye(Nx, format="csr")
-    Iy = sp.eye(Ny, format="csr")
+            avg_v, max_v = model.biomass_stats()
 
-    L = sp.kron(Iy, D2(Nx), format="csr") / hx ** 2 + sp.kron(D2(Ny), Ix, format="csr") / hy ** 2
+            avg_down.append(avg_v)
+            max_down.append(max_v)
 
-    Au = sp.eye(N, format="csr") - ht * d1 * L
-    Av = sp.eye(N, format="csr") - ht * d2 * L
+            previous_u = model.u.copy()
+            previous_v = model.v.copy()
 
-    for a in tqdm.tqdm(a_l):
+            # zapamiętaj pierwsze niezerowe stabilne rozwiązanie
+            if nonzero_v is None and np.max(model.v) > 1.0:
+                nonzero_u = model.u.copy()
+                nonzero_v = model.v.copy()
 
-        for _ in range(max_iter):
-            fu = a - u - u * v ** 2
-            fv = u * v ** 2 - m * v
+        # ===== GAŁĄŹ ROSNĄCA =====
+        avg_up = []
+        max_up = []
 
-            bu = u + ht * fu
-            bv = v + ht * fv
+        print("Simulation for a increasing...")
 
-            # Dirichlet
-            bu[indices_boundary] = 0.0
-            bv[indices_boundary] = 0.0
+        # jeśli znaleziono niezerowe rozwiązanie to startujemy z niego
+        if nonzero_v is not None:
+            previous_u = nonzero_u.copy()
+            previous_v = nonzero_v.copy()
+        else:
+            previous_u = None
+            previous_v = None
 
-            u_new = spla.spsolve(Au, bu)
-            v_new = spla.spsolve(Av, bv)
+        for a in tqdm(reversed(self.a_values)):
 
-            if (np.linalg.norm(u_new - u, np.inf) < tol and
-                    np.linalg.norm(v_new - v, np.inf) < tol):
-                u, v = u_new, v_new
-                break
+            model = KlausmeierModel(a=a, **self.model_params)
 
-            u, v = u_new, v_new
+            if previous_u is not None:
+                model.u = previous_u.copy()
+                model.v = previous_v.copy()
 
-        avg_biomass.append(np.mean(v[indices_interior]))  # wywalamy te 0 na brzegach wtedy
-        max_biomass.append(np.max(v))
+            model.run()
 
-    return  avg_biomass, max_biomass
+            avg_v, max_v, _ = model.biomass_stats()
+
+            avg_up.append(avg_v)
+            max_up.append(max_v)
+
+            previous_u = model.u.copy()
+            previous_v = model.v.copy()
+
+        # odwracamy żeby pasowało do osi
+        avg_up.reverse()
+        max_up.reverse()
+
+        return avg_down, max_down, avg_up, max_up
+
 
 
