@@ -3,8 +3,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.colors as mcolors
-import scipy.sparse as sp
-import scipy.sparse.linalg as spla
+
 
 def analyze_biomass_vs_size(start_size=10, end_size=30, step=2, **model_params):
     """
