@@ -44,7 +44,7 @@ class BifurcationExperiment:
 
             model.run()
 
-            avg_v, max_v, _ = model.biomass_stats()
+            avg_v, max_v, _  = model.biomass_stats()
 
             avg_down.append(avg_v)
             max_down.append(max_v)
@@ -81,7 +81,7 @@ class BifurcationExperiment:
 
             model.run()
 
-            avg_v, max_v, _ = model.biomass_stats()
+            avg_v, max_v, _  = model.biomass_stats()
 
             avg_up.append(avg_v)
             max_up.append(max_v)
